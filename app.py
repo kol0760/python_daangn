@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, Response
 import requests
 from bs4 import BeautifulSoup
 import re
 import json
 import pandas as pd
 import os
+import time
 from tqdm import tqdm
 
 app = Flask(__name__)
@@ -18,22 +19,70 @@ html_template = '''
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <title>Product Search</title>
+    <style>
+      body {
+        background-color: #f8f9fa;
+      }
+      .container {
+        margin-top: 50px;
+        max-width: 600px;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        text-align: center;
+        color: #007bff;
+      }
+      .btn-primary {
+        width: 100%;
+        padding: 10px;
+      }
+      .form-group label {
+        font-weight: bold;
+      }
+      #progress {
+        margin-top: 20px;
+        text-align: center;
+        font-size: 1.2em;
+        color: #007bff;
+      }
+    </style>
   </head>
   <body>
     <div class="container">
-      <h1 class="mt-5">Search for Products</h1>
+      <h1 class="mt-3 mb-4">Search for Products</h1>
       <form method="POST" action="/search">
         <div class="form-group">
           <label for="keyword">Enter Product Keyword:</label>
-          <input type="text" class="form-control" id="keyword" name="keyword" required>
+          <input type="text" class="form-control" id="keyword" name="keyword" placeholder="e.g. laptop, phone, shoes" required>
         </div>
         <button type="submit" class="btn btn-primary">Search</button>
       </form>
+      <div id="progress"></div>
     </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+      $(function() {
+        if (typeof(EventSource) !== "undefined") {
+          var source = new EventSource("/progress");
+          source.onmessage = function(event) {
+            $("#progress").text(event.data);
+          };
+        }
+      });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
   </body>
 </html>
 '''
+
+
+progress_message = ""
 
 
 regions = ["강남구",
@@ -276,8 +325,10 @@ regions = ["강남구",
 "제주시",
 "서귀포시"]
 
-def search_for_products(url):
+def search_for_products(url, progress_queue=None):
     response = requests.get(url)
+    if progress_queue:
+        progress_queue.put("Fetched data from URL")
     soup = BeautifulSoup(response.content, 'html.parser')
     script_tag = soup.find("script", string=re.compile(r'{"@type":"ListItem"'))
     if not script_tag:
@@ -310,27 +361,40 @@ def search_for_products(url):
 def index():
     return html_template
 
+@app.route('/progress')
+def progress():
+    def generate():
+        global progress_message
+        while True:
+            time.sleep(1)
+            yield f"data: {progress_message}\n\n"
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/search', methods=['POST'])
 def search():
+    global progress_message
     search_keyword = request.form.get('keyword')
-
     urls = [base_url.format(region, search_keyword) for region in regions]
     
     product_tables = []
-    for url in tqdm(urls):
+    for i, url in enumerate(tqdm(urls), 1):
         try:
+            progress_message = f"Processing region {i}/{len(regions)}: {url}"
             product_table = search_for_products(url)
             product_tables.append(product_table)
         except requests.exceptions.RequestException as e:
+            progress_message = f"Request failed for URL: {url}, Error: {str(e)}"
             return f"<p>Request failed for URL: {url}, Error: {str(e)}</p>", 500
         except Exception as e:
+            progress_message = f"Error processing URL: {url}, Error: {str(e)}"
             return f"<p>Error processing URL: {url}, Error: {str(e)}</p>", 500
 
     combined_table = pd.concat(product_tables, ignore_index=True) if product_tables else pd.DataFrame()
     csv_filename = 'result_products.csv'
     combined_table.to_csv(csv_filename, index=False)
 
-    return send_file(csv_filename, as_attachment=True, attachment_filename='result_products.csv')
+    progress_message = "Search completed. Preparing download."
+    return send_file(csv_filename, as_attachment=True, download_name='result_products.csv')
 
 if __name__ == '__main__':
     app.run(debug=True)
