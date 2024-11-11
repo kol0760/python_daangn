@@ -397,4 +397,5 @@ def search():
     return send_file(csv_filename, as_attachment=True, download_name='result_products.csv')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.getenv('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=True)
