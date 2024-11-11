@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import time
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 
@@ -370,8 +371,6 @@ def progress():
             yield f"data: {progress_message}\n\n"
     return Response(generate(), mimetype='text/event-stream')
 
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
 @app.route('/search', methods=['POST'])
 def search():
     global progress_message
