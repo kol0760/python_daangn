@@ -5,3 +5,4 @@ pandas==2.2.2
 tqdm
 bs4
 numpy==1.26.4 
+gunicorn
