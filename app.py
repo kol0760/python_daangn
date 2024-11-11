@@ -370,6 +370,8 @@ def progress():
             yield f"data: {progress_message}\n\n"
     return Response(generate(), mimetype='text/event-stream')
 
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 @app.route('/search', methods=['POST'])
 def search():
     global progress_message
@@ -400,6 +402,7 @@ def search():
 
     progress_message = "Search completed. Preparing download."
     return send_file(csv_filename, as_attachment=True, download_name='result_products.csv')
+
+
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(debug=True)
