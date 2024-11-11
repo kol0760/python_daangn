@@ -375,19 +375,24 @@ def search():
     global progress_message
     search_keyword = request.form.get('keyword')
     urls = [base_url.format(region, search_keyword) for region in regions]
-    
+
     product_tables = []
-    for i, url in enumerate(tqdm(urls), 1):
-        try:
-            progress_message = f"Processing region {i}/{len(regions)}: {url}"
-            product_table = search_for_products(url)
-            product_tables.append(product_table)
-        except requests.exceptions.RequestException as e:
-            progress_message = f"Request failed for URL: {url}, Error: {str(e)}"
-            return f"<p>Request failed for URL: {url}, Error: {str(e)}</p>", 500
-        except Exception as e:
-            progress_message = f"Error processing URL: {url}, Error: {str(e)}"
-            return f"<p>Error processing URL: {url}, Error: {str(e)}</p>", 500
+
+    # Use ThreadPoolExecutor for concurrent requests
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_url = {executor.submit(search_for_products, url): url for url in urls}
+        for i, future in enumerate(as_completed(future_to_url), 1):
+            url = future_to_url[future]
+            try:
+                progress_message = f"Processing region {i}/{len(regions)}: {url}"
+                product_table = future.result()
+                product_tables.append(product_table)
+            except requests.exceptions.RequestException as e:
+                progress_message = f"Request failed for URL: {url}, Error: {str(e)}"
+                return f"<p>Request failed for URL: {url}, Error: {str(e)}</p>", 500
+            except Exception as e:
+                progress_message = f"Error processing URL: {url}, Error: {str(e)}"
+                return f"<p>Error processing URL: {url}, Error: {str(e)}</p>", 500
 
     combined_table = pd.concat(product_tables, ignore_index=True) if product_tables else pd.DataFrame()
     csv_filename = 'result_products.csv'
@@ -395,7 +400,6 @@ def search():
 
     progress_message = "Search completed. Preparing download."
     return send_file(csv_filename, as_attachment=True, download_name='result_products.csv')
-
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
