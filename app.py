@@ -385,7 +385,7 @@ def search():
         for i, future in enumerate(as_completed(future_to_url), 1):
             url = future_to_url[future]
             try:
-                progress_message = f"Processing region {i}/{len(regions)}: {url}"
+                progress_message = f"Processing region {i}/{len(regions)}: {regions[i-1]}"
                 product_table = future.result()
                 product_tables.append(product_table)
             except requests.exceptions.RequestException as e:
@@ -404,4 +404,5 @@ def search():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.getenv('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
